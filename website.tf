@@ -1,40 +1,72 @@
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
 provider "aws" {
-  region = "eu-central-1" 
+  region = "eu-central-1"
 }
 
 resource "aws_s3_bucket" "website" {
   bucket = "davidebotti.com"
+  force_destroy = true
+}
 
-  website {
-    index_document = "index.html"
-    error_document = "error.html"
+resource "aws_s3_bucket_website_configuration" "website_config" {
+  bucket = aws_s3_bucket.website.id
+
+  index_document {
+    suffix = "index.html"
   }
 
-  acl = "public-read"
+  error_document {
+    key = "error.html"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "website" {
+  bucket = aws_s3_bucket.website.id
+
+  ignore_public_acls      = true
 }
 
 resource "aws_s3_bucket_policy" "website_policy" {
   bucket = aws_s3_bucket.website.id
 
   policy = jsonencode({
-    Version = "2012-10-17",
+    Version   = "2012-10-17",
     Statement = [
       {
         Effect    = "Allow",
         Principal = "*",
         Action    = "s3:GetObject",
         Resource  = "${aws_s3_bucket.website.arn}/*"
-      }
+      },
     ]
   })
 }
 
 resource "aws_s3_bucket" "www_redirect" {
   bucket = "www.davidebotti.com"
+}
 
-  website {
-    redirect_all_requests_to = "http://davidebotti.com"
+resource "aws_s3_bucket_website_configuration" "www_redirect_config" {
+  bucket = aws_s3_bucket.www_redirect.id
+
+  redirect_all_requests_to {
+    host_name = "davidebotti.com"
+    protocol  = "http"
   }
+}
+
+resource "aws_s3_bucket_public_access_block" "www_redirect" {
+  bucket = aws_s3_bucket.www_redirect.id
+
+  ignore_public_acls      = true
 }
 
 resource "aws_route53_zone" "davidebotti_com" {
@@ -47,7 +79,7 @@ resource "aws_route53_record" "root_alias" {
   type    = "A"
 
   alias {
-    name                   = aws_s3_bucket.website.website_endpoint
+    name                   = aws_s3_bucket_website_configuration.website_config.website_endpoint
     zone_id                = aws_s3_bucket.website.hosted_zone_id
     evaluate_target_health = false
   }
@@ -59,7 +91,7 @@ resource "aws_route53_record" "www_alias" {
   type    = "A"
 
   alias {
-    name                   = aws_s3_bucket.www_redirect.website_endpoint
+    name                   = aws_s3_bucket_website_configuration.www_redirect_config.website_endpoint
     zone_id                = aws_s3_bucket.www_redirect.hosted_zone_id
     evaluate_target_health = false
   }
